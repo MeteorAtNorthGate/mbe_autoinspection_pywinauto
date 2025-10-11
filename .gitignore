@@ -1,0 +1,8 @@
+.idea/
+.venv/
+
+python-3.11.9-amd64.exe
+
+rebuild_venv.txt
+
+src/logs/

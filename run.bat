@@ -1,0 +1,1 @@
+.\.venv\Scripts\activate.bat && python .\src\debug_light_rod.py
