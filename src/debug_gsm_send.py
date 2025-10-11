@@ -75,22 +75,57 @@ class GSMController(QObject, LoggerMixin):
 		self.is_connected = False
 		self.logger.info("GSM 模块已断开连接")
 
+	# --- MODIFIED FUNCTION ---
 	def send_at_command(self, command: str, timeout: float = 5.0) -> Tuple[bool, str]:
-		if not self.is_connected: return False, "模块未连接"
-		try:
-			self.serial_conn.reset_input_buffer()
-			self.serial_conn.write((command + '\r').encode('ascii'))
-			self.logger.debug(f"发送 AT 指令: {command}")
-			response = self.serial_conn.read_until(b'OK', timeout).decode('ascii', 'ignore')
-			if 'ERROR' in response:
-				response += self.serial_conn.read_all().decode('ascii', 'ignore')
-			self.logger.debug(f"AT 指令响应: {response.strip()}")
+		"""发送 AT 指令并等待响应 (已修改为调试模式)"""
+		if not self.is_connected or not self.serial_conn:
+			return False, "模块未连接"
 
-			return 'OK' in response or '>' in response, response.strip()
+		try:
+			# 清理缓冲区，确保接收到的是本次命令的响应
+			self.serial_conn.reset_input_buffer()
+
+			# 发送指令，AT指令需要以回车符(\r)结尾
+			cmd_bytes = (command + '\r').encode('ascii')
+			self.serial_conn.write(cmd_bytes)
+			self.logger.info(f"发送 AT 指令: {command}")
+
+			# 使用循环读取数据，比 read_until 更可靠
+			response_bytes = b''
+			start_time = time.time()
+			while time.time() - start_time < timeout:
+				if self.serial_conn.in_waiting > 0:
+					response_bytes += self.serial_conn.read(self.serial_conn.in_waiting)
+					# 提前结束的条件：收到 OK 或 ERROR 或 > (等待输入)
+					if any(terminator in response_bytes for terminator in [b'OK', b'ERROR', b'>']):
+						# 再稍等一下，确保接收完整
+						time.sleep(0.05)
+						if self.serial_conn.in_waiting > 0:
+							response_bytes += self.serial_conn.read(self.serial_conn.in_waiting)
+						break
+				time.sleep(0.1)
+
+			# === 核心调试代码：直接在控制台打印原始返回值 ===
+			print("\n" + ("-" * 20))
+			print(f"命令 '{command}' 的原始返回值 (bytes):")
+			print(response_bytes)
+			print("-" * 20)
+			# ============================================
+
+			# 解码并判断结果
+			response_str = response_bytes.decode('ascii', 'ignore')
+			success = 'OK' in response_str or '>' in response_str
+
+			self.logger.debug(f"AT 指令响应 (decoded): {response_str.strip()}")
+			return success, response_str.strip()
+
 		except Exception as e:
+			self.logger.error(f"发送AT指令时发生异常: {e}", exc_info=True)
 			return False, str(e)
 
+	# --- MODIFIED FUNCTION ---
 	def send_sms(self, phone: str, message: str) -> bool:
+		"""发送短信 (已修改最终响应的读取逻辑)"""
 		self.logger.info(f"准备向 {phone} 发送短信: '{message}'")
 		try:
 			pdu = self.pdu_codec.encode_sms(phone, message)
@@ -108,13 +143,33 @@ class GSMController(QObject, LoggerMixin):
 				return False
 			time.sleep(0.5)
 
-			self.logger.info("发送 PDU 数据...")
+			self.logger.info("发送 PDU 数据和 CTRL+Z...")
 			self.serial_conn.write(pdu.encode('ascii'))
 			self.serial_conn.write(bytes([0x1A]))  # CTRL+Z
 
-			response = self.serial_conn.read_until(b'OK', 15).decode('ascii', 'ignore')  # Sending SMS might take time
-			self.logger.debug(f"PDU 发送响应: {response.strip()}")
-			return 'OK' in response
+			# === 核心修改部分：使用可靠的循环方式读取最终响应 ===
+			self.logger.info("等待短信发送最终确认...")
+			final_response_bytes = b''
+			start_time = time.time()
+			# 短信发送可能需要较长时间，设置15秒超时
+			while time.time() - start_time < 15.0:
+				if self.serial_conn.in_waiting > 0:
+					final_response_bytes += self.serial_conn.read(self.serial_conn.in_waiting)
+					# 收到 OK 或 ERROR 就认为响应结束
+					if b'OK' in final_response_bytes or b'ERROR' in final_response_bytes:
+						break
+				time.sleep(0.2)  # 避免CPU空转
+
+			# 同样打印出原始返回值用于调试
+			print("\n" + ("-" * 20))
+			print(f"PDU 发送后的原始返回值 (bytes):")
+			print(final_response_bytes)
+			print("-" * 20)
+
+			self.logger.debug(f"PDU 发送响应 (decoded): {final_response_bytes.decode('ascii', 'ignore').strip()}")
+			# 最终的成功判断
+			return b'OK' in final_response_bytes
+		# =======================================================
 		except Exception as e:
 			self.logger.error(f"发送短信时发生异常: {e}", exc_info=True)
 			return False
