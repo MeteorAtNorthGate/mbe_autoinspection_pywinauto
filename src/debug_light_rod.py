@@ -6,7 +6,7 @@ import time
 import serial
 from PySide6.QtCore import QObject  # For compatibility
 
-from helpers import LoggerMixin, setup_logger
+from tools import LoggerMixin, setup_logger
 
 
 class TrafficLightController(QObject, LoggerMixin):

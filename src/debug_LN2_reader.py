@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from pymodbus.client import ModbusTcpClient
 from PySide6.QtCore import QObject  # pymodbus internally may use Qt, so keep it for compatibility
 
-from helpers import LoggerMixin, setup_logger
+from tools import LoggerMixin, setup_logger
 
 
 class LN2SeparatorReader(QObject, LoggerMixin):
