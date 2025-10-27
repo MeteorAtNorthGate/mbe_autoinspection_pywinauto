@@ -31,14 +31,11 @@ def create_dummy_image(filename="test_image.png"):
 # --- 主函数 (tesserocr 版本) ---
 def main():
 	image_path = "test_image.png"
-	output_txt_path = "tesserocr_optimized_output.txt"
+	output_txt_path = "output/tesserocr_optimized_output.txt"
 
-	# --- 关键修正：指定 Tesseract 安装路径 ---
-	# tesserocr 需要指向 tessdata 文件夹的 *父目录*
-	# 根据你之前的 pytesseract 脚本，我们假设路径如下：
-	tesseract_path = r'C:\Program Files\Tesseract-OCR'
-	# 如果你的 tessdata 文件夹在别处 (例如 C:\tess\tessdata)，
-	# 那么这里应该设置为 tesseract_path = r'C:\tess'
+	# tesserocr 需要指向 tessdata 文件夹，需要注意某些时候它可能要求的是tesserocr根目录
+	# 但我们这里使用的PyTessBaseAPI 的参数需要的是tessdata目录
+	tessdata_path = r'C:\Program Files\Tesseract-OCR\tessdata'
 
 	# 1. 确保演示图片存在
 	create_dummy_image(image_path)
@@ -55,7 +52,7 @@ def main():
 	psm_mode = PSM.SINGLE_LINE
 
 	print(f"--- Tesserocr Demo ---")
-	print(f"Attempting to use Tesseract path: {tesseract_path}")
+	print(f"Attempting to use Tesseract path: {tessdata_path}")
 	print(f"Using Config: PSM={psm_mode}")
 	print(f"Using Whitelist: '{char_whitelist}'")
 
@@ -70,7 +67,7 @@ def main():
 
 		# 5. 调用 tesserocr API
 		# 这是关键：我们初始化 API 一次，并传入 path 参数
-		with PyTessBaseAPI(path=tesseract_path, lang='eng', psm=psm_mode, oem=OEM.DEFAULT) as api:
+		with PyTessBaseAPI(path=tessdata_path, lang='eng', psm=psm_mode, oem=OEM.DEFAULT) as api:
 
 			# 设置白名单变量
 			api.SetVariable("tessedit_char_whitelist", char_whitelist)
@@ -99,11 +96,11 @@ def main():
 	except RuntimeError as e:
 		print(f"Tesserocr Runtime Error: {e}")
 		print("--- DEBUGGING HELP ---")
-		print(f"The path '{tesseract_path}' was provided to tesserocr.")
+		print(f"The path '{tessdata_path}' was provided to tesserocr.")
 		print(f"Please VERIFY that this directory contains a subdirectory named 'tessdata'.")
-		print(f"e.g., '{tesseract_path}\\tessdata\\eng.traineddata' should exist.")
-		print("If not, please update the 'tesseract_path' variable in the script.")
-		raise
+		print(f"e.g., '{tessdata_path}\\eng.traineddata' should exist.")
+		print("If not, please update the 'tessdata_path' variable in the script.")
+		# raise
 	except Exception as e:
 		print(f"An unexpected error occurred: {e}")
 

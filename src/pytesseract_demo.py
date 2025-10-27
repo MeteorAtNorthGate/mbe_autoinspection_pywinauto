@@ -33,7 +33,7 @@ def create_dummy_image(filename="test_image.png"):
 # --- 主函数 ---
 def main():
 	image_path = "test_image.png"
-	output_txt_path = "pillow_optimized_output.txt"
+	output_txt_path = "output/pytesseract_optimized_output.txt"
 
 	# 1. 确保演示图片存在
 	# 我们更新一下演示图片，使其包含科学计数法

@@ -10,4 +10,4 @@ tesserocr-2.8.0-cp311-cp311-win_amd64.whl
 #tests,local files,,,
 src/logs/
 test_image.png
-pillow_optimized_output.txt
+output/
