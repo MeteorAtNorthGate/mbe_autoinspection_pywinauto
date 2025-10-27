@@ -29,7 +29,7 @@ MOLLY_MAIN_PANEL = "Lbar5.exe"
 
 
 # 如果 Tesseract OCR 引擎不在系统的 PATH 环境变量中，请取消下面的注释并指定其可执行文件路径
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 # --- 2. 辅助函数 (Helper Functions) ---

@@ -1,8 +1,13 @@
+#IDE & venv
 .idea/
 .venv/
 
+#local_packages,rebuild
 python-3.11.9-amd64.exe
-
 rebuild_venv.txt
+tesserocr-2.8.0-cp311-cp311-win_amd64.whl
 
+#tests,local files,,,
 src/logs/
+test_image.png
+pillow_optimized_output.txt
