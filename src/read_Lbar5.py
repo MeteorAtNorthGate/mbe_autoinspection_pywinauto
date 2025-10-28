@@ -2,31 +2,29 @@
 
 """
 这是一个可直接运行的 Python 脚本，用于从 Molly 2000 面板获取数据。
-它结合了 pywinauto, OpenCV, 和 Tesseract OCR。
+它结合了 pywinauto, Pillow, 和 Tesseract OCR。 (已移除 OpenCV)
 
 *** 优化版工作流 ***
 1.  **短暂交互**: 脚本会一次性完成所有GUI操作（获取文本、获取控件坐标、截取主窗口图像）。
 2.  **离线分析**: 之后的所有图像处理（像素取色、OCR）都在截取的图像上进行，不再打扰GUI。
 
 安装前置库:
-pip install pywinauto opencv-python pytesseract numpy pyautogui
+pip install pywinauto Pillow pytesseract pyautogui
 
 注意:
 1. 请确保已安装 Google Tesseract OCR 引擎并将其添加到系统的 PATH 环境变量中。
 2. Tesseract 是一个完全离线的工具，运行时不会联网。
 """
 
-import cv2
-import numpy as np
 import pyautogui
 import pytesseract
 from pywinauto.application import Application
+from PIL import ImageEnhance  # 导入 Pillow 图像增强模块
 
 from tools import get_pids_by_name
 
 # --- 1. 用户配置 (User Configuration) ---
 MOLLY_MAIN_PANEL = "Lbar5.exe"
-
 
 # 如果 Tesseract OCR 引擎不在系统的 PATH 环境变量中，请取消下面的注释并指定其可执行文件路径
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -45,9 +43,10 @@ def find_controls_and_print(window):
 	print("=" * 80)
 
 
-def get_shutter_status_from_image(main_screenshot_bgr, main_win_coords, panel_coords):
+def get_shutter_status_from_image(main_screenshot_pil, main_win_coords, panel_coords):
 	"""
     (离线分析) 从已截取的图像中通过像素颜色获取快门状态。
+    使用 Pillow (PIL) 的 getpixel()。
     """
 	# 这些是指示灯相对于其面板左上角的偏移量，需要您精确测量
 	relative_x_offset = 20
@@ -58,10 +57,10 @@ def get_shutter_status_from_image(main_screenshot_bgr, main_win_coords, panel_co
 	dot_relative_x = (panel_coords.left + relative_x_offset) - main_win_coords.left
 	dot_relative_y = (panel_coords.top + relative_y_offset) - main_win_coords.top
 
-	# 从截图中直接读取像素颜色 (注意OpenCV的BGR顺序)
-	b, g, r = main_screenshot_bgr[dot_relative_y, dot_relative_x]
+	# 从 Pillow 图像中直接读取像素颜色 (RGB顺序)
+	r, g, b = main_screenshot_pil.getpixel((dot_relative_x, dot_relative_y))
 
-	# 定义颜色阈值
+	# 定义颜色阈值 (Pillow 返回 RGB，逻辑与 OpenCV BGR 不同，但我们这里是按变量名 R,G,B 比较，所以逻辑不变)
 	GREEN_R_MAX, GREEN_G_MIN, GREEN_B_MAX = 80, 200, 80
 	RED_R_MIN, RED_G_MAX, RED_B_MAX = 200, 80, 80
 
@@ -73,9 +72,10 @@ def get_shutter_status_from_image(main_screenshot_bgr, main_win_coords, panel_co
 		return f"Unknown (R={r}, G={g}, B={b})"
 
 
-def get_reading_ocr_from_image(main_screenshot_bgr, main_win_coords, panel_coords, whitelist):
+def get_reading_ocr_from_image(main_screenshot_pil, main_win_coords, panel_coords, whitelist):
 	"""
     (离线分析) 从已截取的图像中 OCR 获取仪表读数。
+    使用 Pillow (PIL) 进行图像处理。
     """
 	try:
 		# 1. 计算要裁剪区域在主截图中的相对坐标
@@ -84,17 +84,20 @@ def get_reading_ocr_from_image(main_screenshot_bgr, main_win_coords, panel_coord
 		crop_x_end = panel_coords.right - main_win_coords.left
 		crop_y_end = panel_coords.bottom - main_win_coords.top
 
-		# 2. 从主截图中裁剪出目标区域
-		cropped_image = main_screenshot_bgr[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+		# 2. 从主截图中裁剪出目标区域 (Pillow crop 使用 (left, upper, right, lower))
+		box = (crop_x_start, crop_y_start, crop_x_end, crop_y_end)
+		cropped_image = main_screenshot_pil.crop(box)
 
-		# --- 图像预处理 ---
+		# --- 图像预处理 (Pillow) ---
 		# 3. 转换为灰度图
-		gray_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
-		# 4. 增强对比度
-		contrast_image = cv2.convertScaleAbs(gray_image, alpha=2.0, beta=0)
+		gray_image = cropped_image.convert('L')
+		# 4. 增强对比度 (等同于 cv2.convertScaleAbs(alpha=2.0))
+		enhancer = ImageEnhance.Contrast(gray_image)
+		contrast_image = enhancer.enhance(2.0)
 
 		# --- OCR 配置 ---
 		custom_config = f'--psm 7 -c tessedit_char_whitelist={whitelist}'
+		# pytesseract 直接支持 Pillow 图像对象
 		text = pytesseract.image_to_string(contrast_image, config=custom_config)
 		return text.strip()
 	except Exception as e:
@@ -125,7 +128,7 @@ def main():
 
 		# 1a. 获取所有需要交互的控件
 		### TODO ###: 根据 find_controls_and_print 的输出修改这里的定位参数
-		reactor_panel = main_window.child_window(class_name="ListView20WndClass",found_index=3)
+		reactor_panel = main_window.child_window(class_name="ListView20WndClass", found_index=3)
 		shutter_panel = main_window.child_window(title="Shutter", found_index=0)
 		vacuum_gauge_panel = main_window.child_window(class_name="Static", found_index=10)
 		temp_gauge_panel = main_window.child_window(class_name="Static", found_index=12)
@@ -138,12 +141,14 @@ def main():
 		temp_coords = temp_gauge_panel.rectangle()
 
 		# 1c. 截取整个主窗口的图像
-		screenshot_pil = pyautogui.screenshot(region=(
+		# pyautogui.screenshot() 直接返回 Pillow 图像对象
+		main_screenshot_pil = pyautogui.screenshot(region=(
 			main_win_coords.left, main_win_coords.top,
 			main_win_coords.width(), main_win_coords.height()
 		))
-		# 将图像转换为OpenCV格式，为后续处理做准备
-		main_screenshot_bgr = cv2.cvtColor(np.array(screenshot_pil), cv2.COLOR_RGB2BGR)
+
+		# [已移除] 不再需要 cv2 和 numpy 进行格式转换
+		# main_screenshot_bgr = cv2.cvtColor(np.array(screenshot_pil), cv2.COLOR_RGB2BGR)
 
 		print("--- GUI交互完成。所有后续操作均为离线分析 ---")
 
@@ -165,7 +170,8 @@ def main():
 	# 分析任务2: 分析快门状态
 	print("\n[分析 2] 分析快门状态...")
 	try:
-		shutter_status = get_shutter_status_from_image(main_screenshot_bgr, main_win_coords, shutter_coords)
+		# 传入 Pillow 图像对象
+		shutter_status = get_shutter_status_from_image(main_screenshot_pil, main_win_coords, shutter_coords)
 		print(f"快门 1 状态: {shutter_status}")
 	except Exception as e:
 		print(f"分析快门状态失败: {e}")
@@ -174,7 +180,8 @@ def main():
 	print("\n[分析 3] OCR识别仪表读数...")
 	try:
 		vacuum_whitelist = '0123456789.E-'
-		vacuum_reading = get_reading_ocr_from_image(main_screenshot_bgr, main_win_coords, vacuum_coords,
+		# 传入 Pillow 图像对象
+		vacuum_reading = get_reading_ocr_from_image(main_screenshot_pil, main_win_coords, vacuum_coords,
 													vacuum_whitelist)
 		print(f"真空计读数: {vacuum_reading}")
 	except Exception as e:
@@ -182,7 +189,8 @@ def main():
 
 	try:
 		temp_whitelist = '0123456789Kk.'
-		temp_reading = get_reading_ocr_from_image(main_screenshot_bgr, main_win_coords, temp_coords, temp_whitelist)
+		# 传入 Pillow 图像对象
+		temp_reading = get_reading_ocr_from_image(main_screenshot_pil, main_win_coords, temp_coords, temp_whitelist)
 		print(f"冷泵温度读数: {temp_reading}")
 	except Exception as e:
 		print(f"OCR识别冷泵温度失败: {e}")
@@ -192,4 +200,3 @@ def main():
 
 if __name__ == "__main__":
 	main()
-
